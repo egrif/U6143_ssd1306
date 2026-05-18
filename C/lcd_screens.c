@@ -27,6 +27,7 @@
 #  include <netinet/in.h>
 #  include <net/if.h>
 #  include <arpa/inet.h>
+#  include <ifaddrs.h>
 #else
 #  include <sys/param.h>
 #  include <sys/mount.h>
@@ -36,6 +37,7 @@
 #  include <netinet/in.h>
 #  include <net/if.h>
 #  include <arpa/inet.h>
+#  include <ifaddrs.h>
 #endif
 
 /* ------------------------------------------------------------------ */
@@ -149,21 +151,37 @@ unsigned char Obaintemperature(void)
 
 char *GetIpAddress(void)
 {
-    int fd;
-    struct ifreq ifr;
-    static char fallback[] = "0.0.0.0";
+    static char result[16] = "0.0.0.0";
+    struct ifaddrs *ifaddr, *ifa;
 
-    fd = socket(AF_INET, SOCK_DGRAM, 0);
-    if (fd < 0) return fallback;
+    if (getifaddrs(&ifaddr) == -1)
+        return result;
 
-    ifr.ifr_addr.sa_family = AF_INET;
-    strncpy(ifr.ifr_name, "eth0", IFNAMSIZ - 1);
-    if (ioctl(fd, SIOCGIFADDR, &ifr) == 0) {
-        close(fd);
-        return inet_ntoa(((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr);
+    /* First pass: try eth0 specifically (original behaviour) */
+    for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+        if (!ifa->ifa_addr || ifa->ifa_addr->sa_family != AF_INET) continue;
+        if (strcmp(ifa->ifa_name, "eth0") != 0) continue;
+        const char *ip = inet_ntoa(((struct sockaddr_in *)ifa->ifa_addr)->sin_addr);
+        if (strncmp(ip, "127.", 4) == 0) continue;
+        strncpy(result, ip, sizeof(result) - 1);
+        freeifaddrs(ifaddr);
+        return result;
     }
-    close(fd);
-    return fallback;
+
+    /* Second pass: eth0 had no IP — try any non-loopback, non-link-local IPv4.
+     * Handles cases where the IP is on a bridge (pxvirt, br0, etc.) */
+    for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+        if (!ifa->ifa_addr || ifa->ifa_addr->sa_family != AF_INET) continue;
+        const char *ip = inet_ntoa(((struct sockaddr_in *)ifa->ifa_addr)->sin_addr);
+        if (strncmp(ip, "127.", 4) == 0) continue;
+        if (strncmp(ip, "169.254.", 8) == 0) continue;
+        strncpy(result, ip, sizeof(result) - 1);
+        freeifaddrs(ifaddr);
+        return result;
+    }
+
+    freeifaddrs(ifaddr);
+    return result;
 }
 
 void FirstGetIpAddress(void)
