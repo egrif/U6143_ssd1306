@@ -27,6 +27,7 @@
 #  include <netinet/in.h>
 #  include <net/if.h>
 #  include <arpa/inet.h>
+#  include <ifaddrs.h>
 #else
 #  include <sys/param.h>
 #  include <sys/mount.h>
@@ -36,6 +37,7 @@
 #  include <netinet/in.h>
 #  include <net/if.h>
 #  include <arpa/inet.h>
+#  include <ifaddrs.h>
 #endif
 
 /* ------------------------------------------------------------------ */
@@ -149,12 +151,13 @@ unsigned char Obaintemperature(void)
 
 char *GetIpAddress(void)
 {
-    static char addr[16] = "127.0.0.1";
+    static char addr[16] = "0.0.0.0";
 
-    int fd = socket(AF_INET, SOCK_DGRAM, 0);
-    if (fd < 0) return addr;
+    struct ifaddrs *ifaddr;
+    if (getifaddrs(&ifaddr) == -1)
+        return addr;
 
-    /* Try each interface in network_interfaces in order; return first with a valid IP */
+    /* Try each interface in network_interfaces in order; return first non-loopback IPv4 */
     const char *p = g_config.network_interfaces;
     while (*p) {
         const char *end = p;
@@ -166,14 +169,16 @@ char *GetIpAddress(void)
         strncpy(iface, p, len);
 
         if (iface[0]) {
-            struct ifreq ifr;
-            memset(&ifr, 0, sizeof(ifr));
-            ifr.ifr_addr.sa_family = AF_INET;
-            strncpy(ifr.ifr_name, iface, IFNAMSIZ - 1);
-            if (ioctl(fd, SIOCGIFADDR, &ifr) == 0) {
-                strncpy(addr, inet_ntoa(((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr),
-                        sizeof(addr) - 1);
-                close(fd);
+            for (struct ifaddrs *ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+                if (!ifa->ifa_addr || ifa->ifa_addr->sa_family != AF_INET)
+                    continue;
+                if (strcmp(ifa->ifa_name, iface) != 0)
+                    continue;
+                const char *ip = inet_ntoa(((struct sockaddr_in *)ifa->ifa_addr)->sin_addr);
+                if (strncmp(ip, "127.", 4) == 0)
+                    continue;
+                strncpy(addr, ip, sizeof(addr) - 1);
+                freeifaddrs(ifaddr);
                 return addr;
             }
         }
@@ -182,7 +187,7 @@ char *GetIpAddress(void)
         if (*p == ',') p++;
     }
 
-    close(fd);
+    freeifaddrs(ifaddr);
     return addr;
 }
 
