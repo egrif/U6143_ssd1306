@@ -149,32 +149,21 @@ unsigned char Obaintemperature(void)
 
 char *GetIpAddress(void)
 {
-    static char addr[16] = "0.0.0.0";
-
-    /* Use the first interface in the network_interfaces list (eth0 by default) */
-    char iface[IFNAMSIZ] = {0};
-    const char *p = g_config.network_interfaces;
-    const char *end = p;
-    while (*end && *end != ',') end++;
-    size_t len = (size_t)(end - p);
-    if (len >= IFNAMSIZ) len = IFNAMSIZ - 1;
-    strncpy(iface, p, len);
-    if (!iface[0]) return addr;
-
-    int fd = socket(AF_INET, SOCK_DGRAM, 0);
-    if (fd < 0) return addr;
-
+    int fd;
     struct ifreq ifr;
-    memset(&ifr, 0, sizeof(ifr));
+    static char fallback[] = "0.0.0.0";
+
+    fd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (fd < 0) return fallback;
+
     ifr.ifr_addr.sa_family = AF_INET;
-    strncpy(ifr.ifr_name, iface, IFNAMSIZ - 1);
+    strncpy(ifr.ifr_name, "eth0", IFNAMSIZ - 1);
     if (ioctl(fd, SIOCGIFADDR, &ifr) == 0) {
-        const char *ip = inet_ntoa(((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr);
-        if (strncmp(ip, "127.", 4) != 0)
-            strncpy(addr, ip, sizeof(addr) - 1);
+        close(fd);
+        return inet_ntoa(((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr);
     }
     close(fd);
-    return addr;
+    return fallback;
 }
 
 void FirstGetIpAddress(void)
