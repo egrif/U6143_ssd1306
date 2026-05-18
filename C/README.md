@@ -2,19 +2,13 @@
 
 ## Install (recommended)
 
-Enable I²C first:
-
-```bash
-sudo raspi-config   # Interface Options → I2C → Enable, then reboot
-```
-
-Then install with one command:
-
 ```bash
 curl -fsSL https://raw.githubusercontent.com/egrif/U6143_ssd1306/master/install.sh | sudo bash
 ```
 
-This compiles the driver, installs the binary to `/usr/local/bin/ssd1306-display`, writes a default config to `/etc/ssd1306.conf`, and starts a systemd service that runs on every boot. Re-running the command updates to the latest version without touching your config.
+This enables I²C automatically, compiles the driver, installs the binary to `/usr/local/bin/ssd1306-display`, writes a default config to `/etc/ssd1306.conf`, and starts a systemd service that runs on every boot. Re-running the command updates to the latest version without touching your config.
+
+> **Note:** On first install, if I²C was not previously enabled, a reboot may be required before the display activates. The installer will tell you if this is the case.
 
 ## Manual build
 
