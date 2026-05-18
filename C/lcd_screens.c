@@ -564,7 +564,7 @@ void LCD_DisplayClock(void)
     time_t now = time(NULL);
     struct tm *t = localtime(&now);
     char timebuf[16] = {0};
-    char datebuf[20] = {0};
+    char datebuf[32] = {0};
     static const char *wdays[] = {"Sun","Mon","Tue","Wed","Thu","Fri","Sat"};
 
     snprintf(datebuf, sizeof(datebuf), "%s %04d-%02d-%02d",
