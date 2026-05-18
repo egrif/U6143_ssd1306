@@ -27,7 +27,6 @@
 #  include <netinet/in.h>
 #  include <net/if.h>
 #  include <arpa/inet.h>
-#  include <ifaddrs.h>
 #else
 #  include <sys/param.h>
 #  include <sys/mount.h>
@@ -37,7 +36,6 @@
 #  include <netinet/in.h>
 #  include <net/if.h>
 #  include <arpa/inet.h>
-#  include <ifaddrs.h>
 #endif
 
 /* ------------------------------------------------------------------ */
@@ -153,41 +151,29 @@ char *GetIpAddress(void)
 {
     static char addr[16] = "0.0.0.0";
 
-    struct ifaddrs *ifaddr;
-    if (getifaddrs(&ifaddr) == -1)
-        return addr;
-
-    /* Try each interface in network_interfaces in order; return first non-loopback IPv4 */
+    /* Use the first interface in the network_interfaces list (eth0 by default) */
+    char iface[IFNAMSIZ] = {0};
     const char *p = g_config.network_interfaces;
-    while (*p) {
-        const char *end = p;
-        while (*end && *end != ',') end++;
-        size_t len = (size_t)(end - p);
-        if (len >= IFNAMSIZ) len = IFNAMSIZ - 1;
+    const char *end = p;
+    while (*end && *end != ',') end++;
+    size_t len = (size_t)(end - p);
+    if (len >= IFNAMSIZ) len = IFNAMSIZ - 1;
+    strncpy(iface, p, len);
+    if (!iface[0]) return addr;
 
-        char iface[IFNAMSIZ] = {0};
-        strncpy(iface, p, len);
+    int fd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (fd < 0) return addr;
 
-        if (iface[0]) {
-            for (struct ifaddrs *ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
-                if (!ifa->ifa_addr || ifa->ifa_addr->sa_family != AF_INET)
-                    continue;
-                if (strcmp(ifa->ifa_name, iface) != 0)
-                    continue;
-                const char *ip = inet_ntoa(((struct sockaddr_in *)ifa->ifa_addr)->sin_addr);
-                if (strncmp(ip, "127.", 4) == 0)
-                    continue;
-                strncpy(addr, ip, sizeof(addr) - 1);
-                freeifaddrs(ifaddr);
-                return addr;
-            }
-        }
-
-        p = end;
-        if (*p == ',') p++;
+    struct ifreq ifr;
+    memset(&ifr, 0, sizeof(ifr));
+    ifr.ifr_addr.sa_family = AF_INET;
+    strncpy(ifr.ifr_name, iface, IFNAMSIZ - 1);
+    if (ioctl(fd, SIOCGIFADDR, &ifr) == 0) {
+        const char *ip = inet_ntoa(((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr);
+        if (strncmp(ip, "127.", 4) != 0)
+            strncpy(addr, ip, sizeof(addr) - 1);
     }
-
-    freeifaddrs(ifaddr);
+    close(fd);
     return addr;
 }
 
