@@ -8,7 +8,9 @@
 
 set -euo pipefail
 
-REPO_URL="https://github.com/egrif/U6143_ssd1306.git"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=repo.conf
+source "$SCRIPT_DIR/repo.conf"
 BINARY_NAME="ssd1306-display"
 BINARY_DEST="/usr/local/bin/$BINARY_NAME"
 CONFIG_DEST="/etc/ssd1306.conf"
