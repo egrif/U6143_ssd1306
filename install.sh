@@ -14,6 +14,7 @@ BINARY_DEST="/usr/local/bin/$BINARY_NAME"
 CONFIG_DEST="/etc/ssd1306.conf"
 SERVICE_NAME="$BINARY_NAME"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
+REBOOT_NEEDED=0
 
 # --------------------------------------------------------------------------- #
 
@@ -36,7 +37,53 @@ fi
 echo "Service will run as: $SERVICE_USER"
 
 # --------------------------------------------------------------------------- #
-# 1. Dependencies
+# 1. Enable I2C
+
+enable_i2c() {
+    echo ""
+    echo "-- Checking I2C --"
+
+    if [ -e /dev/i2c-1 ]; then
+        echo "-- I2C already enabled (/dev/i2c-1 found) --"
+        return
+    fi
+
+    echo "-- I2C not active; enabling now --"
+
+    if command -v raspi-config &>/dev/null; then
+        raspi-config nonint do_i2c 0
+    else
+        # Fallback: edit config.txt directly (works on systems without raspi-config)
+        local config
+        config=$(find /boot -maxdepth 2 -name config.txt 2>/dev/null | head -1)
+        if [ -n "$config" ]; then
+            grep -q "^dtparam=i2c_arm=on" "$config" \
+                || echo "dtparam=i2c_arm=on" >> "$config"
+            grep -q "^i2c-dev" /etc/modules 2>/dev/null \
+                || echo "i2c-dev" >> /etc/modules
+        else
+            echo "WARNING: /boot/config.txt not found — enable I2C manually:"
+            echo "  sudo raspi-config   # Interface Options → I2C → Enable"
+            return
+        fi
+    fi
+
+    # Activate the modules immediately so no reboot is required
+    modprobe i2c-dev 2>/dev/null || true
+    modprobe i2c-bcm2835 2>/dev/null || modprobe i2c-bcm2708 2>/dev/null || true
+
+    if [ -e /dev/i2c-1 ]; then
+        echo "-- I2C enabled (no reboot needed) --"
+    else
+        echo "-- I2C configured; a reboot is required before the display will work --"
+        REBOOT_NEEDED=1
+    fi
+}
+
+enable_i2c
+
+# --------------------------------------------------------------------------- #
+# 2. Dependencies
 
 echo ""
 echo "-- Installing build dependencies --"
@@ -44,7 +91,7 @@ apt-get update -qq
 apt-get install -y -qq git gcc make i2c-tools
 
 # --------------------------------------------------------------------------- #
-# 2. Clone and build in a temp directory
+# 3. Clone and build in a temp directory
 
 BUILD_DIR="$(mktemp -d)"
 trap 'rm -rf "$BUILD_DIR"' EXIT
@@ -58,14 +105,14 @@ echo "-- Building --"
 make -C "$BUILD_DIR/src/C"
 
 # --------------------------------------------------------------------------- #
-# 3. Install binary
+# 4. Install binary
 
 echo ""
 echo "-- Installing binary to $BINARY_DEST --"
 install -m 755 "$BUILD_DIR/src/C/display" "$BINARY_DEST"
 
 # --------------------------------------------------------------------------- #
-# 4. Install default config (never overwrite an existing one)
+# 5. Install default config (never overwrite an existing one)
 
 if [ ! -f "$CONFIG_DEST" ]; then
     echo "-- Installing default config to $CONFIG_DEST --"
@@ -75,7 +122,7 @@ else
 fi
 
 # --------------------------------------------------------------------------- #
-# 5. Add user to i2c group so service can access /dev/i2c-* without root
+# 6. Add user to i2c group so service can access /dev/i2c-* without root
 
 if [ "$SERVICE_USER" != "root" ]; then
     if ! groups "$SERVICE_USER" 2>/dev/null | grep -qw i2c; then
@@ -87,7 +134,7 @@ if [ "$SERVICE_USER" != "root" ]; then
 fi
 
 # --------------------------------------------------------------------------- #
-# 6. Create systemd service
+# 7. Create systemd service
 
 echo ""
 echo "-- Writing service file $SERVICE_FILE --"
@@ -107,7 +154,7 @@ WantedBy=multi-user.target
 EOF
 
 # --------------------------------------------------------------------------- #
-# 7. Enable and start
+# 8. Enable and start
 
 systemctl daemon-reload
 systemctl enable "${SERVICE_NAME}.service"
@@ -129,3 +176,11 @@ echo "Other useful commands:"
 echo "  sudo systemctl status  $SERVICE_NAME"
 echo "  sudo journalctl -u $SERVICE_NAME -f    # follow logs"
 echo "  sudo systemctl disable $SERVICE_NAME   # stop autostart"
+
+if [ "$REBOOT_NEEDED" -eq 1 ]; then
+    echo ""
+    echo "*** REBOOT REQUIRED ***"
+    echo "I2C was enabled but /dev/i2c-1 is not yet active."
+    echo "Run:  sudo reboot"
+    echo "The display service will start automatically after the reboot."
+fi
