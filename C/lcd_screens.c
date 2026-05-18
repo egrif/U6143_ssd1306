@@ -150,24 +150,38 @@ unsigned char Obaintemperature(void)
 char *GetIpAddress(void)
 {
     static char addr[16] = "127.0.0.1";
-    /* Use first interface from network_interfaces list */
-    char iface[IFNAMSIZ] = {0};
-    const char *p = g_config.network_interfaces;
-    const char *end = p;
-    while (*end && *end != ',') end++;
-    size_t len = (size_t)(end - p);
-    if (len >= IFNAMSIZ) len = IFNAMSIZ - 1;
-    strncpy(iface, p, len);
-    if (!iface[0]) return addr;
 
-    struct ifreq ifr;
     int fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (fd < 0) return addr;
-    ifr.ifr_addr.sa_family = AF_INET;
-    strncpy(ifr.ifr_name, iface, IFNAMSIZ - 1);
-    if (ioctl(fd, SIOCGIFADDR, &ifr) == 0)
-        strncpy(addr, inet_ntoa(((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr),
-                sizeof(addr) - 1);
+
+    /* Try each interface in network_interfaces in order; return first with a valid IP */
+    const char *p = g_config.network_interfaces;
+    while (*p) {
+        const char *end = p;
+        while (*end && *end != ',') end++;
+        size_t len = (size_t)(end - p);
+        if (len >= IFNAMSIZ) len = IFNAMSIZ - 1;
+
+        char iface[IFNAMSIZ] = {0};
+        strncpy(iface, p, len);
+
+        if (iface[0]) {
+            struct ifreq ifr;
+            memset(&ifr, 0, sizeof(ifr));
+            ifr.ifr_addr.sa_family = AF_INET;
+            strncpy(ifr.ifr_name, iface, IFNAMSIZ - 1);
+            if (ioctl(fd, SIOCGIFADDR, &ifr) == 0) {
+                strncpy(addr, inet_ntoa(((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr),
+                        sizeof(addr) - 1);
+                close(fd);
+                return addr;
+            }
+        }
+
+        p = end;
+        if (*p == ',') p++;
+    }
+
     close(fd);
     return addr;
 }
