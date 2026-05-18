@@ -15,7 +15,7 @@ show_gpu_temp=0    # CPU and GPU temperatures side-by-side (requires vcgencmd)
 show_network=0     # network RX/TX throughput for active interfaces
 show_wifi=0        # Wi-Fi signal strength and link quality (wlan0)
 show_docker=0      # count of running and stopped Docker containers
-show_hostname=0    # system hostname as a standalone screen
+show_hostname=1    # system hostname as a standalone screen
 show_ip=0          # IP addresses of configured network interfaces
 
 # Temperature unit: celsius or fahrenheit
