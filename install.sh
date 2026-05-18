@@ -8,9 +8,16 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Default URL (used when run via curl | bash; overridden by repo.conf when run from a local clone)
+REPO_URL="https://github.com/beartums/U6143_ssd1306.git"
+
 # shellcheck source=repo.conf
-source "$SCRIPT_DIR/repo.conf"
+if [ -n "${BASH_SOURCE[0]:-}" ]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    if [ -f "$SCRIPT_DIR/repo.conf" ]; then
+        source "$SCRIPT_DIR/repo.conf"
+    fi
+fi
 BINARY_NAME="ssd1306-display"
 BINARY_DEST="/usr/local/bin/$BINARY_NAME"
 CONFIG_DEST="/etc/ssd1306.conf"
